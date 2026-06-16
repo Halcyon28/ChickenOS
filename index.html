@@ -504,6 +504,10 @@
     <div class="icon-img">📝</div>
     <span>Chicken Notes</span>
   </div>
+  <div class="desk-icon" style="top:620px; left:20px" ondblclick="openApp('eggcatch')">
+    <div class="icon-img">🥚</div>
+    <span>Egg Catch</span>
+  </div>
   <div class="desk-icon" style="top:120px; left:20px" ondblclick="openApp('clock')">
     <div class="icon-img">🐔</div>
     <span>Cluck Clock</span>
@@ -524,7 +528,7 @@
     <div class="icon-img">🎵</div>
     <span>CoopBeats</span>
   </div>
-  <div class="desk-icon" style="top:620px; left:20px" ondblclick="openApp('about')">
+  <div class="desk-icon" style="top:20px; left:100px" ondblclick="openApp('about')">
     <div class="icon-img">ℹ️</div>
     <span>About ChickenOS</span>
   </div>
@@ -548,7 +552,10 @@
   <div class="sm-item" onclick="openApp('eggs'); closeStartMenu()"><span class="sm-icon">🥚</span>Egg Counter</div>
   <div class="sm-item" onclick="openApp('facts'); closeStartMenu()"><span class="sm-icon">🐣</span>Chicken Facts</div>
   <div class="sm-item" onclick="openApp('paint'); closeStartMenu()"><span class="sm-icon">🎨</span>Egg Painter</div>
+  <div class="sm-item" onclick="openApp('music'); closeStartMenu()"><span class="sm-icon">🎵</span>CoopBeats</div>
+  <div class="sm-item" onclick="openApp('eggcatch'); closeStartMenu()"><span class="sm-icon">🥚</span>Egg Catch</div>
   <div class="sm-item" onclick="openApp('about'); closeStartMenu()"><span class="sm-icon">ℹ️</span>About ChickenOS</div>
+
 </div>
 
 <script>
@@ -563,6 +570,7 @@ const appDefs = {
   facts:   { title: '🐣 Chicken Facts', w: 380, h: 340, createBody: createFacts },
   paint:   { title: '🎨 Egg Painter',    w: 560, h: 420, createBody: createPaint },
   music:   { title: '🎵 CoopBeats',      w: 500, h: 500, createBody: createMusic},
+  eggcatch: { title: '🥚 Egg Catch', w: 400, h: 480, createBody: createEggCatch },
   about:   { title: 'ℹ️ ChickenOS',      w: 400, h: 480, createBody: createAbout },
 };
 
@@ -893,6 +901,211 @@ function createMusic(body) {
   };
 }
 
+function createEggCatch(body) {
+  body.innerHTML = `
+    <div style="display: flex; flex-direction: column; height: 100%; background: #0d0a00;">
+      <div style="display: flex; justify-content: space-between; padding: 8px 16px; color: #FFD000; font-size: 14px; font-weight: 600;">
+        <span>Score: <span id="ec-score">0</span></span>
+        <span>Lives: <span id="ec-lives">❤️❤️❤️</span></span>
+        <span>Best: <span id="ec-best">0</span></span>
+      </div>
+      <canvas id="ec-canvas" style="flex: 1; display: block;"></canvas>
+      <div style="padding: 8px; text-align: center; color: rgba(255,208,0,0.4); font-size: 12px;">
+        ← → arrow keys or A D to move
+      </div>
+    </div>`;
+
+  const canvas = document.getElementById('ec-canvas');
+  const ctx = canvas.getContext('2d');
+
+  // size canvas to fit the window body
+  function resize() {
+    canvas.width = canvas.offsetWidth;
+    canvas.height = canvas.offsetHeight;
+  }
+  resize();
+
+  // game state
+  let score = 0;
+  let lives = 3;
+  let best = 0;
+  let gameOver = false;
+  let eggs = [];
+  let frameId;
+
+  // basket
+  const basket = {
+    width: 70,
+    height: 20,
+    x: canvas.width / 2 - 35,
+    y: canvas.height - 40,
+    speed: 6,
+    movingLeft: false,
+    movingRight: false,
+  };
+
+  // keyboard controls
+  const keys = {};
+  function onKey(e, down) {
+    keys[e.key] = down;
+  }
+  document.addEventListener('keydown', e => onKey(e, true));
+  document.addEventListener('keyup',   e => onKey(e, false));
+
+  // spawn an egg
+  function spawnEgg() {
+    eggs.push({
+      x: Math.random() * (canvas.width - 20) + 10,
+      y: -20,
+      speed: 2 + Math.random() * 2 + score * 0.05, 
+      radius: 14,
+      rotation: 0,
+      rotationSpeed: (Math.random() - 0.5) * 0.15, // 👈 and this
+
+    });
+  }
+
+  let spawnTimer = 0;
+  let spawnInterval = 90; // frames between eggs
+
+  function update() {
+    if (gameOver) return;
+
+    // move basket
+    if (keys['ArrowLeft'] || keys['a'] || keys['A']) basket.x -= basket.speed;
+    if (keys['ArrowRight'] || keys['d'] || keys['D']) basket.x += basket.speed;
+    basket.x = Math.max(0, Math.min(canvas.width - basket.width, basket.x));
+
+    // spawn eggs on a timer
+    spawnTimer++;
+    if (spawnTimer >= spawnInterval) {
+      spawnEgg();
+      spawnTimer = 0;
+      // gradually speed up spawning
+      spawnInterval = Math.max(30, spawnInterval - 0.5);
+    }
+
+    // update eggs
+    eggs = eggs.filter(egg => {
+      egg.y += egg.speed;
+      egg.rotation += egg.rotationSpeed;
+
+      // caught!
+      if (
+        egg.y + egg.radius >= basket.y &&
+        egg.y - egg.radius <= basket.y + basket.height &&
+        egg.x >= basket.x &&
+        egg.x <= basket.x + basket.width
+      ) {
+        score++;
+        document.getElementById('ec-score').textContent = score;
+        return false; // remove egg
+      }
+
+      // missed!
+      if (egg.y > canvas.height + egg.radius) {
+        lives--;
+        const livesEl = document.getElementById('ec-lives');
+        if (livesEl) livesEl.textContent = '❤️'.repeat(Math.max(0, lives));
+        if (lives <= 0) endGame();
+        return false; // remove egg
+      }
+
+      return true;
+    });
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // draw eggs
+    eggs.forEach(egg => {
+      ctx.save();                        
+      ctx.translate(egg.x, egg.y);      
+      ctx.rotate(egg.rotation);    
+      ctx.font = '28px serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('🥚', 0, 0);         
+      ctx.restore();                    
+    });
+
+    // draw basket
+    ctx.fillStyle = '#FFD000';
+    ctx.beginPath();
+    ctx.roundRect(basket.x, basket.y, basket.width, basket.height, 6);
+    ctx.fill();
+
+    ctx.save();
+    ctx.font = '22px serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('🐔', basket.x + basket.width / 2, basket.y - 16);
+    ctx.restore();
+  }
+
+  function endGame() {
+    gameOver = true;
+    cancelAnimationFrame(frameId);
+    if (score > best) {
+      best = score;
+      document.getElementById('ec-best').textContent = best;
+    }
+
+    // draw game over screen
+    ctx.fillStyle = 'rgba(0,0,0,0.75)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = '#FFD000';
+    ctx.font = 'bold 28px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Game Over! 🐔', canvas.width / 2, canvas.height / 2 - 40);
+
+    ctx.font = '18px sans-serif';
+    ctx.fillText(`Score: ${score}`, canvas.width / 2, canvas.height / 2);
+    ctx.fillText(`Best: ${best}`, canvas.width / 2, canvas.height / 2 + 30);
+
+    ctx.font = '14px sans-serif';
+    ctx.fillStyle = 'rgba(255,208,0,0.6)';
+    ctx.fillText('Click to play again', canvas.width / 2, canvas.height / 2 + 70);
+
+    canvas.addEventListener('click', restartGame, { once: true });
+  }
+
+  function restartGame() {
+    score = 0;
+    lives = 3;
+    eggs = [];
+    gameOver = false;
+    spawnTimer = 0;
+    spawnInterval = 90;
+    basket.x = canvas.width / 2 - 35;
+    document.getElementById('ec-score').textContent = 0;
+    document.getElementById('ec-lives').textContent = '❤️❤️❤️';
+    loop();
+  }
+
+  function loop() {
+    update();
+    draw();
+    frameId = requestAnimationFrame(loop);
+  }
+
+  // stop the game loop when the window is closed
+  const observer = new MutationObserver(() => {
+    if (!document.contains(canvas)) {
+      cancelAnimationFrame(frameId);
+      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('keyup', onKey);
+      observer.disconnect();
+    }
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+
+  loop();
+}
+
 function createClock(body) {
   body.innerHTML = `
     <div class="clock-body">
@@ -1115,6 +1328,8 @@ function createAbout(body) {
           <li>🥚 <strong>Egg Counter</strong> — track eggs with a log (dont know why I made this) </li>
           <li>🐣 <strong>Chicken Facts</strong> —facts about chickens</li>
           <li>🎨 <strong>Egg Painter</strong> — a drawing canvas with save support</li>
+          <li>🎵 <strong>CoopBeats</strong> — A music player with some predownloaded songs</li>
+          <li>🧺 <strong>Egg Catch</strong> — A game where you need to catch eggs into a basket.</li>
           <li>ℹ️ <strong>About ChickenOS</strong> — This application thats open.</li>
         </ul>
       </div>
@@ -1125,6 +1340,7 @@ function createAbout(body) {
           <li>Egg Counter app with a log</li>
           <li>Egg Painter with brush, eraser & image save</li>
           <li>Chicken Facts app that shows chicken facts</li>
+          <li>CoopBeats music player with predownloaded songs</li>
           <li>Dev Logs section</li>
         </ul>
       </div>
@@ -1133,18 +1349,24 @@ function createAbout(body) {
 
       <div class="about-devlog">
         <div class="log-date">Devlog #1 · Initial Build</div>
-        <div class="log-text">Set up the window system with dragging, resizing, minimize, and maximize. Added the taskbar and start menu. Chose a dark golden theme to match the chicken theme.</div>
+        <div class="log-text">Set up the window system with dragging, resizing, minimize, and maximize. Added the taskbar and start menu. Chose a dark golden theme to match the chicken theme. Also added a music player with predownloaded sounds that are copyright free.</div>
       </div>
       
       <div class="about-devlog">
-        <div class="log-date">Devlog #2 · Apps andamp; Polish</div>
+        <div class="log-date">Devlog #2 · Apps and Polish</div>
         <div class="log-text">Built Chicken Notes (with word count + chicken stamp feature), the Cluck Clock, and the Egg Counter (could be considered a game idk). Tweaked the window drop shadows and active state highlight. Windows now glow yellow when focused. </div>
       </div>
       
       <div class="about-devlog">
-        <div class="log-date">Devlog #3 · Paint andamp; Facts</div>
+        <div class="log-date">Devlog #3 · Paint and Facts</div>
         <div class="log-text">Added Egg Painter which is a drawing app with color picker, adjustable brush size, eraser tool, and PNG download function. Also added the Chicken Facts app with 10 real facts about chickens sourced from chicken geeks (nah but fr js from the internet).</div>
       </div>
+
+      <div class="about-devlog">
+        <div class="log-date">Devlog #4 · games and more</div>
+        <div class="log-text">Add games and some more features! Have Fun!</div>
+      </div>
+
     </div>`;
 }
 
